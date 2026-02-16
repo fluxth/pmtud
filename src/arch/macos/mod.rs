@@ -1,2 +1,2 @@
-pub(crate) mod ipv4;
-pub(crate) mod ipv6;
+pub(crate) mod icmp;
+pub(crate) mod icmpv6;

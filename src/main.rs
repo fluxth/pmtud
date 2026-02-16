@@ -2,7 +2,6 @@ mod arch;
 mod cli;
 mod resolver;
 
-use std::net::{Ipv4Addr, Ipv6Addr};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -33,22 +32,14 @@ fn main() -> ExitCode {
     }
 
     if let Some(target) = target_addresses.ipv4 {
-        run_pmtud_ipv4(target);
+        eprintln!("IPv4 path MTU discovery using icmp to {}", target);
+        arch::icmp_pmtud(target)
     }
 
     if let Some(target) = target_addresses.ipv6 {
-        run_pmtud_ipv6(target);
+        eprintln!("IPv6 path MTU discovery using icmpv6 to {}", target);
+        arch::icmpv6_pmtud(target)
     }
 
     ExitCode::SUCCESS
-}
-
-fn run_pmtud_ipv6(target: Ipv6Addr) {
-    eprintln!("Running IPv6 path MTU discovery for {}", target);
-    arch::ipv6_pmtud(target)
-}
-
-fn run_pmtud_ipv4(target: Ipv4Addr) {
-    eprintln!("Running IPv4 path MTU discovery for {}", target);
-    arch::ipv4_pmtud(target)
 }
