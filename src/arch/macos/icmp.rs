@@ -151,8 +151,19 @@ pub(crate) fn icmp_pmtud(target: Ipv4Addr) -> std::io::Result<()> {
         print!("probe mtu={} icmp_seq={}: ", probe_mtu, icmp_seq);
         std::io::Write::flush(&mut std::io::stdout())?;
 
-        socket.send_to(&full_packet, &socket_addr.into())?;
-        icmp_seq += 1;
+        match socket.send_to(&full_packet, &socket_addr.into()) {
+            Ok(_) => {
+                icmp_seq += 1;
+            }
+            Err(ref err) if err.raw_os_error() == Some(libc::EMSGSIZE) => {
+                println!("message too long");
+                probe_mtu -= 1;
+                continue;
+            }
+            Err(err) => {
+                return Err(err);
+            }
+        }
 
         let mut recv_buf = [std::mem::MaybeUninit::<u8>::uninit(); 2048];
         match socket.recv_from(&mut recv_buf) {
