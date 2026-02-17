@@ -156,9 +156,14 @@ pub(crate) fn icmp_pmtud(target: Ipv4Addr) -> std::io::Result<()> {
                 icmp_seq += 1;
             }
             Err(ref err) if err.raw_os_error() == Some(libc::EMSGSIZE) => {
-                println!("message too long");
+                println!("from=kernel, message too long");
                 probe_mtu -= 1;
                 continue;
+            }
+            Err(ref err) if err.raw_os_error() == Some(libc::EHOSTUNREACH) => {
+                println!("from=kernel, no route to host");
+                println!("Path MTU discovery to {} failed", target);
+                break;
             }
             Err(err) => {
                 return Err(err);
@@ -172,7 +177,7 @@ pub(crate) fn icmp_pmtud(target: Ipv4Addr) -> std::io::Result<()> {
                     unsafe { std::slice::from_raw_parts(recv_buf.as_ptr() as *const u8, len) };
                 let reply_addr = addr.as_socket_ipv4().map(|sock| sock.ip().clone());
                 if let Some(reply_addr) = reply_addr {
-                    print!("{}: ", reply_addr);
+                    print!("from={}, ", reply_addr); // FIXME
                 }
 
                 match handle_response_packet(buf, probe_mtu) {
