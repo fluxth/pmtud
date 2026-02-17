@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-clap = { version = "4.5.58", features = ["derive"] }
-dns-lookup = "3.0.1"
-libc = "0.2.182"
-pnet_packet = "0.35.0"
-socket2 = "0.6.2"
+clap = { version = "=4.5.58", features = ["derive"] }
+dns-lookup = "=3.0.1"
+libc = "=0.2.182"
+pnet_packet = "=0.35.0"
+socket2 = "=0.6.2"
