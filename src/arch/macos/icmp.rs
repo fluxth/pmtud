@@ -7,7 +7,7 @@ use pnet_packet::icmp::destination_unreachable::DestinationUnreachablePacket;
 use pnet_packet::icmp::echo_request::MutableEchoRequestPacket;
 use pnet_packet::icmp::{IcmpPacket, IcmpTypes};
 use pnet_packet::ip::IpNextHeaderProtocols;
-use pnet_packet::ipv4::{Ipv4Packet, MutableIpv4Packet};
+use pnet_packet::ipv4::{Ipv4Flags, Ipv4Packet, MutableIpv4Packet};
 use pnet_packet::{MutablePacket, Packet};
 use socket2::{Domain, Protocol, Socket, Type};
 
@@ -24,29 +24,9 @@ fn build_icmp_echo_request_packet(size: u16, seq: u16, target: Ipv4Addr) -> Vec<
     ip_packet.set_next_level_protocol(IpNextHeaderProtocols::Icmp);
     ip_packet.set_destination(target);
 
-    // Darwin kernel is cursed, when using IP_HDRINCL:
-    // it expects these fields to be HOST ENDIAN and NOT NETWORK ENDIAN, wtf?
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    {
-        let raw_buf = ip_packet.packet_mut();
-
-        // ip_header.set_total_length(size);
-        raw_buf[2..4].copy_from_slice(&size.to_ne_bytes());
-
-        // ip_header.set_fragment_offset(0);
-        // ip_header.set_flags(Ipv4Flags::DontFragment);
-        let flags_and_frag: u16 = 0x4000; // BE: DF bit, no offset
-        raw_buf[6..8].copy_from_slice(&flags_and_frag.to_ne_bytes());
-    }
-
-    // Linux and other normal people: Use standard pnet setters
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
-    {
-        use pnet_packet::ipv4::Ipv4Flags;
-        ip_header.set_total_length(size);
-        ip_header.set_fragment_offset(0);
-        ip_header.set_flags(Ipv4Flags::DontFragment);
-    }
+    ip_packet.set_total_length(size);
+    ip_packet.set_fragment_offset(0);
+    ip_packet.set_flags(Ipv4Flags::DontFragment);
 
     // Build ICMP Echo Request
     use pnet_packet::icmp::echo_request::IcmpCodes;
@@ -69,6 +49,21 @@ fn build_icmp_echo_request_packet(size: u16, seq: u16, target: Ipv4Addr) -> Vec<
     ip_packet.set_checksum(0);
     let ip_checksum = pnet_packet::ipv4::checksum(&ip_packet.to_immutable());
     ip_packet.set_checksum(ip_checksum);
+
+    // Darwin kernel is cursed, when using IP_HDRINCL:
+    // it expects these fields to be HOST ENDIAN and NOT NETWORK ENDIAN, wtf?
+    // since these are u16, we can just swap the first and second byte
+    // NOTE: do not swap byte order before building icmp packet since it will confuse pnet
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        let raw_buf = ip_packet.packet_mut();
+
+        let total_length = &mut raw_buf[2..4];
+        total_length.swap(0, 1);
+
+        let flags_and_fragment_offset = &mut raw_buf[6..8];
+        flags_and_fragment_offset.swap(0, 1);
+    }
 
     full_packet
 }
