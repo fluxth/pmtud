@@ -104,6 +104,7 @@ pub(crate) fn icmpv6_pmtud(target: Ipv6Addr) -> std::io::Result<()> {
     let mut min_mtu = IPV6_MTU_MIN;
     let mut probe_mtu = 1500;
     let mut icmp_seq = 0;
+    let mut recv_buf = Box::new([std::mem::MaybeUninit::<u8>::uninit(); 9000]);
 
     while min_mtu < max_mtu {
         print!("probe mtu={} icmp_seq={}: ", probe_mtu, icmp_seq);
@@ -132,8 +133,7 @@ pub(crate) fn icmpv6_pmtud(target: Ipv6Addr) -> std::io::Result<()> {
             }
         }
 
-        let mut recv_buf = [std::mem::MaybeUninit::<u8>::uninit(); 2048];
-        match socket.recv_from(&mut recv_buf) {
+        match socket.recv_from(recv_buf.as_mut()) {
             Ok((len, addr)) => {
                 let buf =
                     unsafe { std::slice::from_raw_parts(recv_buf.as_ptr() as *const u8, len) };
