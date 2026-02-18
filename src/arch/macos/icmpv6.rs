@@ -9,6 +9,8 @@ use pnet_packet::{MutablePacket, Packet};
 use socket2::{Domain, Protocol, Socket, Type};
 
 const TIMEOUT: Duration = Duration::from_millis(1000);
+const IPV6_MTU_MAX: u16 = 1500;
+const IPV6_MTU_MIN: u16 = 1280;
 
 fn build_icmpv6_echo_request_packet(size: u16, seq: u16) -> Vec<u8> {
     // 1500 (MTU) - 40 (IPv6 Header) - 8 (ICMPv6 Header) = 1452 bytes
@@ -36,7 +38,7 @@ fn build_icmpv6_echo_request_packet(size: u16, seq: u16) -> Vec<u8> {
 }
 
 enum Action {
-    ReportPathMTU(u16),
+    ReplyReceived,
     TryNextHop(u32),
     TryNext,
     Ignore,
@@ -51,14 +53,14 @@ fn handle_response_packet(buf: &[u8], size: u16) -> Action {
     //let icmpv6_code = icmpv6_packet.get_icmpv6_code();
 
     match icmpv6_type {
-        Icmpv6Types::EchoReply => Action::ReportPathMTU(size),
+        Icmpv6Types::EchoReply => Action::ReplyReceived,
         Icmpv6Types::PacketTooBig => {
             let payload = icmpv6_packet.payload();
 
             let (chunks, _) = payload.as_chunks::<4>();
             if let Some(mtu_bytes) = chunks.first() {
                 let mtu = u32::from_be_bytes(*mtu_bytes);
-                if mtu > 0 {
+                if mtu > 0 && mtu < size.into() {
                     Action::TryNextHop(mtu)
                 } else {
                     Action::TryNext
@@ -98,14 +100,16 @@ pub(crate) fn icmpv6_pmtud(target: Ipv6Addr) -> std::io::Result<()> {
         return Err(std::io::Error::last_os_error());
     }
 
+    let mut max_mtu = IPV6_MTU_MAX;
+    let mut min_mtu = IPV6_MTU_MIN;
     let mut probe_mtu = 1500;
     let mut icmp_seq = 0;
 
-    loop {
-        let raw_packet = build_icmpv6_echo_request_packet(probe_mtu, icmp_seq);
-
+    while min_mtu < max_mtu {
         print!("probe mtu={} icmp_seq={}: ", probe_mtu, icmp_seq);
         std::io::Write::flush(&mut std::io::stdout())?;
+
+        let raw_packet = build_icmpv6_echo_request_packet(probe_mtu, icmp_seq);
 
         match socket.send_to(&raw_packet, &socket_addr.into()) {
             Ok(_) => {
@@ -113,7 +117,9 @@ pub(crate) fn icmpv6_pmtud(target: Ipv6Addr) -> std::io::Result<()> {
             }
             Err(ref err) if err.raw_os_error() == Some(libc::EMSGSIZE) => {
                 println!("from=kernel, message too long");
-                probe_mtu -= 1;
+                max_mtu = probe_mtu - 1;
+                probe_mtu = min_mtu + (max_mtu - min_mtu + 1) / 2;
+                icmp_seq += 1;
                 continue;
             }
             Err(ref err) if err.raw_os_error() == Some(libc::EHOSTUNREACH) => {
@@ -137,19 +143,28 @@ pub(crate) fn icmpv6_pmtud(target: Ipv6Addr) -> std::io::Result<()> {
                 }
 
                 match handle_response_packet(buf, probe_mtu) {
-                    Action::ReportPathMTU(path_mtu) => {
+                    Action::ReplyReceived => {
                         println!("ok");
-                        println!("Path MTU to {}: {} bytes", target, path_mtu);
-                        break;
+                        min_mtu = probe_mtu;
+                        if min_mtu < max_mtu {
+                            probe_mtu = min_mtu + (max_mtu - min_mtu + 1) / 2;
+                            sleep(Duration::from_millis(100));
+                        }
                     }
                     Action::TryNextHop(size) => {
+                        let size = size.try_into().unwrap();
                         println!("packet too big, next_hop={}", size);
-                        probe_mtu = size.try_into().unwrap();
+                        if max_mtu > size {
+                            max_mtu = size;
+                        } else {
+                            max_mtu = probe_mtu - 1;
+                        }
+                        probe_mtu = size;
                     }
                     Action::TryNext => {
                         println!("packet too big");
-                        probe_mtu -= 1;
-                        sleep(Duration::from_millis(100));
+                        max_mtu = probe_mtu - 1;
+                        probe_mtu = min_mtu + (max_mtu - min_mtu + 1) / 2;
                     }
                     Action::Ignore => {}
                 }
@@ -157,11 +172,13 @@ pub(crate) fn icmpv6_pmtud(target: Ipv6Addr) -> std::io::Result<()> {
             Err(_) => {
                 // FIXME: not actually all timeout
                 println!("timed out");
-                probe_mtu -= 1;
-                sleep(Duration::from_millis(100));
+                max_mtu = probe_mtu - 1;
+                probe_mtu = min_mtu + (max_mtu - min_mtu + 1) / 2;
             }
         }
     }
+
+    println!("Path MTU to {}: {} bytes", target, probe_mtu);
 
     Ok(())
 }

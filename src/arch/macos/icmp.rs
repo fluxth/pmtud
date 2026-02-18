@@ -12,6 +12,8 @@ use pnet_packet::{MutablePacket, Packet};
 use socket2::{Domain, Protocol, Socket, Type};
 
 const TIMEOUT: Duration = Duration::from_millis(1000);
+const IPV4_MTU_MAX: u16 = 1500;
+const IPV4_MTU_MIN: u16 = 576;
 
 fn build_icmp_echo_request_packet(size: u16, seq: u16, target: Ipv4Addr) -> Vec<u8> {
     let mut full_packet = vec![0u8; size.into()];
@@ -69,7 +71,7 @@ fn build_icmp_echo_request_packet(size: u16, seq: u16, target: Ipv4Addr) -> Vec<
 }
 
 enum Action {
-    ReportPathMTU(u16),
+    ReplyReceived,
     TryNextHop(u16),
     TryNext,
     Ignore,
@@ -92,7 +94,7 @@ fn handle_response_packet(buf: &[u8], size: u16) -> Action {
     let icmp_code = icmp_packet.get_icmp_code();
 
     match icmp_type {
-        IcmpTypes::EchoReply => Action::ReportPathMTU(size),
+        IcmpTypes::EchoReply => Action::ReplyReceived,
         IcmpTypes::DestinationUnreachable => {
             use pnet_packet::icmp::destination_unreachable::IcmpCodes;
 
@@ -141,14 +143,16 @@ pub(crate) fn icmp_pmtud(target: Ipv4Addr) -> std::io::Result<()> {
         return Err(std::io::Error::last_os_error());
     }
 
-    let mut probe_mtu = 1500;
+    let mut max_mtu = IPV4_MTU_MAX;
+    let mut min_mtu = IPV4_MTU_MIN;
+    let mut probe_mtu = max_mtu;
     let mut icmp_seq = 0;
 
-    loop {
-        let full_packet = build_icmp_echo_request_packet(probe_mtu, icmp_seq, target);
-
+    while min_mtu < max_mtu {
         print!("probe mtu={} icmp_seq={}: ", probe_mtu, icmp_seq);
         std::io::Write::flush(&mut std::io::stdout())?;
+
+        let full_packet = build_icmp_echo_request_packet(probe_mtu, icmp_seq, target);
 
         match socket.send_to(&full_packet, &socket_addr.into()) {
             Ok(_) => {
@@ -156,7 +160,9 @@ pub(crate) fn icmp_pmtud(target: Ipv4Addr) -> std::io::Result<()> {
             }
             Err(ref err) if err.raw_os_error() == Some(libc::EMSGSIZE) => {
                 println!("from=kernel, message too long");
-                probe_mtu -= 1;
+                max_mtu = probe_mtu - 1;
+                probe_mtu = min_mtu + (max_mtu - min_mtu + 1) / 2;
+                icmp_seq += 1;
                 continue;
             }
             Err(ref err) if err.raw_os_error() == Some(libc::EHOSTUNREACH) => {
@@ -180,19 +186,27 @@ pub(crate) fn icmp_pmtud(target: Ipv4Addr) -> std::io::Result<()> {
                 }
 
                 match handle_response_packet(buf, probe_mtu) {
-                    Action::ReportPathMTU(path_mtu) => {
+                    Action::ReplyReceived => {
                         println!("ok");
-                        println!("Path MTU to {}: {} bytes", target, path_mtu);
-                        break;
+                        min_mtu = probe_mtu;
+                        if min_mtu < max_mtu {
+                            probe_mtu = min_mtu + (max_mtu - min_mtu + 1) / 2;
+                            sleep(Duration::from_millis(100));
+                        }
                     }
                     Action::TryNextHop(size) => {
                         println!("fragmentation needed, next_hop={}", size);
+                        if max_mtu > size {
+                            max_mtu = size;
+                        } else {
+                            max_mtu = probe_mtu - 1;
+                        }
                         probe_mtu = size;
                     }
                     Action::TryNext => {
                         println!("fragmentation needed");
-                        probe_mtu -= 1;
-                        sleep(Duration::from_millis(100));
+                        max_mtu = probe_mtu - 1;
+                        probe_mtu = min_mtu + (max_mtu - min_mtu + 1) / 2;
                     }
                     Action::Ignore => {}
                 }
@@ -200,14 +214,13 @@ pub(crate) fn icmp_pmtud(target: Ipv4Addr) -> std::io::Result<()> {
             Err(_) => {
                 // FIXME: not actually all timeout
                 println!("timed out");
-                probe_mtu -= 1;
-                sleep(Duration::from_millis(100));
+                max_mtu = probe_mtu - 1;
+                probe_mtu = min_mtu + (max_mtu - min_mtu + 1) / 2;
             }
         }
-        if probe_mtu < 68 {
-            break;
-        }
     }
+
+    println!("Path MTU to {}: {} bytes", target, probe_mtu);
 
     Ok(())
 }
