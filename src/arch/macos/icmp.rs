@@ -56,7 +56,11 @@ fn build_icmp_echo_request_packet(size: u16, seq: u16, target: Ipv4Addr) -> Vec<
     icmp_packet.set_icmp_code(IcmpCodes::NoCode);
     icmp_packet.set_identifier(0); // FIXME: change
     icmp_packet.set_sequence_number(seq);
-    icmp_packet.payload_mut().fill(0x42);
+
+    let payload = icmp_packet.payload_mut();
+    payload.fill(0x42);
+    *payload.first_mut().unwrap() = 0x41;
+    *payload.last_mut().unwrap() = 0x43;
 
     let icmp_view = IcmpPacket::new(icmp_packet.packet()).unwrap();
     let icmp_checksum = pnet_packet::icmp::checksum(&icmp_view);

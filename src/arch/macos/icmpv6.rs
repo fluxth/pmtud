@@ -22,7 +22,11 @@ fn build_icmpv6_echo_request_packet(size: u16, seq: u16) -> Vec<u8> {
     icmp_packet.set_icmpv6_code(Icmpv6Codes::NoCode);
     icmp_packet.set_identifier(0); // FIXME: change
     icmp_packet.set_sequence_number(seq);
-    icmp_packet.payload_mut().fill(0x42);
+
+    let payload = icmp_packet.payload_mut();
+    payload.fill(0x42);
+    *payload.first_mut().unwrap() = 0x41;
+    *payload.last_mut().unwrap() = 0x43;
 
     // IMPORTANT: On macOS, do NOT manually calculate the checksum for ICMPv6 raw sockets.
     // The kernel calculates it automatically using the pseudo-header.
