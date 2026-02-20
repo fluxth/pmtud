@@ -24,11 +24,7 @@ impl TargetAddresses {
     }
 
     pub(crate) fn is_nil(&self) -> bool {
-        if self.ipv6.is_none() && self.ipv4.is_none() {
-            true
-        } else {
-            false
-        }
+        self.ipv6.is_none() && self.ipv4.is_none()
     }
 }
 
@@ -36,30 +32,30 @@ pub(crate) fn lookup_target_addresses(
     version: TargetProtocolVersion,
     target: Option<&str>,
 ) -> std::io::Result<TargetAddresses> {
-    if let Some(specified) = target {
-        if let Ok(ip) = IpAddr::from_str(specified) {
-            let resolved = match ip {
-                IpAddr::V4(ipv4) => match version {
-                    TargetProtocolVersion::DualStack | TargetProtocolVersion::V4Only => {
-                        TargetAddresses {
-                            ipv6: None,
-                            ipv4: Some(ipv4),
-                        }
+    if let Some(specified) = target
+        && let Ok(ip) = IpAddr::from_str(specified)
+    {
+        let resolved = match ip {
+            IpAddr::V4(ipv4) => match version {
+                TargetProtocolVersion::DualStack | TargetProtocolVersion::V4Only => {
+                    TargetAddresses {
+                        ipv6: None,
+                        ipv4: Some(ipv4),
                     }
-                    TargetProtocolVersion::V6Only => TargetAddresses::nil(),
-                },
-                IpAddr::V6(ipv6) => match version {
-                    TargetProtocolVersion::DualStack | TargetProtocolVersion::V6Only => {
-                        TargetAddresses {
-                            ipv6: Some(ipv6),
-                            ipv4: None,
-                        }
+                }
+                TargetProtocolVersion::V6Only => TargetAddresses::nil(),
+            },
+            IpAddr::V6(ipv6) => match version {
+                TargetProtocolVersion::DualStack | TargetProtocolVersion::V6Only => {
+                    TargetAddresses {
+                        ipv6: Some(ipv6),
+                        ipv4: None,
                     }
-                    TargetProtocolVersion::V4Only => TargetAddresses::nil(),
-                },
-            };
-            return Ok(resolved);
-        }
+                }
+                TargetProtocolVersion::V4Only => TargetAddresses::nil(),
+            },
+        };
+        return Ok(resolved);
     }
 
     let (resolved_ipv6, resolved_ipv4) = if let Some(specified) = target {
