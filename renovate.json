@@ -7,5 +7,6 @@
     ":maintainLockFilesMonthly",
     ":pinVersions",
     "github>Turbo87/renovate-config//rust/updateToolchain"
-  ]
+  ],
+  "reviewers": ["fluxth"]
 }
