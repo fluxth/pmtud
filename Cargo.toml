@@ -6,6 +6,6 @@ edition = "2024"
 [dependencies]
 clap = { version = "=4.6.1", features = ["derive"] }
 dns-lookup = "=3.0.1"
-libc = "=0.2.185"
+libc = "=0.2.186"
 pnet_packet = "=0.35.0"
 socket2 = "=0.6.3"
