@@ -13,6 +13,7 @@ const DEFAULT_TARGET_IPV6: Ipv6Addr = Ipv6Addr::new(0x2001, 0x4860, 0x4860, 0, 0
 pub(crate) struct TargetAddresses {
     pub ipv6: Option<Ipv6Addr>,
     pub ipv4: Option<Ipv4Addr>,
+    pub had_warnings: bool,
 }
 
 impl TargetAddresses {
@@ -20,6 +21,7 @@ impl TargetAddresses {
         Self {
             ipv6: None,
             ipv4: None,
+            had_warnings: false,
         }
     }
 
@@ -41,6 +43,7 @@ pub(crate) fn lookup_target_addresses(
                     TargetAddresses {
                         ipv6: None,
                         ipv4: Some(ipv4),
+                        had_warnings: false,
                     }
                 }
                 TargetProtocolVersion::V6Only => TargetAddresses::nil(),
@@ -50,6 +53,7 @@ pub(crate) fn lookup_target_addresses(
                     TargetAddresses {
                         ipv6: Some(ipv6),
                         ipv4: None,
+                        had_warnings: false,
                     }
                 }
                 TargetProtocolVersion::V4Only => TargetAddresses::nil(),
@@ -74,12 +78,15 @@ pub(crate) fn lookup_target_addresses(
         (vec![DEFAULT_TARGET_IPV6], vec![DEFAULT_TARGET_IPV4])
     };
 
+    let mut had_warnings = false;
+
     let ipv4 = if version.should_run_for_ipv4() {
         if resolved_ipv4.len() > 1 {
-            eprintln!(
+            println!(
                 "warning: {} has multiple IPv4 addresses",
                 target.expect("target should not be none")
-            )
+            );
+            had_warnings = true;
         }
 
         resolved_ipv4.into_iter().take(1).next()
@@ -89,10 +96,11 @@ pub(crate) fn lookup_target_addresses(
 
     let ipv6 = if version.should_run_for_ipv6() {
         if resolved_ipv6.len() > 1 {
-            eprintln!(
+            println!(
                 "warning: {} has multiple IPv6 addresses",
                 target.expect("target should not be none")
-            )
+            );
+            had_warnings = true;
         }
 
         resolved_ipv6.into_iter().take(1).next()
@@ -100,5 +108,9 @@ pub(crate) fn lookup_target_addresses(
         None
     };
 
-    Ok(TargetAddresses { ipv6, ipv4 })
+    Ok(TargetAddresses {
+        ipv6,
+        ipv4,
+        had_warnings,
+    })
 }

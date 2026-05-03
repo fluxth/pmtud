@@ -56,23 +56,30 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> std::io
     let mut recv_buf = Box::new([std::mem::MaybeUninit::<u8>::uninit(); RECV_BUF_SIZE]);
 
     while min_mtu < max_mtu {
-        print!("probe mtu={} icmp_seq={}: ", probe_mtu, icmp_seq);
+        let probe_seq = icmp_seq;
+        print!("  probe[{}] mtu={}: listening...", probe_seq, probe_mtu);
         std::io::Write::flush(&mut std::io::stdout())?;
 
-        let full_packet = pinger.build_echo_request_packet(probe_mtu, icmp_seq, target);
+        let full_packet = pinger.build_echo_request_packet(probe_mtu, probe_seq, target);
         icmp_seq += 1;
 
         match socket.send_to(&full_packet, &socket_addr.into()) {
             Ok(_) => {}
             Err(ref err) if err.raw_os_error() == Some(libc::EMSGSIZE) => {
-                println!("from=kernel, message too long");
+                println!(
+                    "\r  probe[{}] mtu={}: from=kernel, message too long",
+                    probe_seq, probe_mtu
+                );
                 max_mtu = probe_mtu - 1;
                 probe_mtu = (max_mtu + min_mtu).div_ceil(2);
                 continue;
             }
             Err(ref err) if err.raw_os_error() == Some(libc::EHOSTUNREACH) => {
-                println!("from=kernel, no route to host");
-                println!("Path MTU discovery to {} failed", target);
+                println!(
+                    "\r  probe[{}] mtu={}: from=kernel, no route to host",
+                    probe_seq, probe_mtu
+                );
+                println!("  path mtu: discovery failed");
                 return Ok(());
             }
             Err(err) => {
@@ -84,13 +91,17 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> std::io
             Ok((len, addr)) => {
                 let buf =
                     unsafe { std::slice::from_raw_parts(recv_buf.as_ptr() as *const u8, len) };
-                if let Some(reply_addr) = addr.as_socket().map(|sock| sock.ip()) {
-                    print!("from={}, ", reply_addr);
-                }
+                let from_prefix = addr
+                    .as_socket()
+                    .map(|sock| format!("from={}, ", sock.ip()))
+                    .unwrap_or_default();
 
                 match pinger.handle_response_packet(buf, probe_mtu) {
                     Action::ReplyReceived => {
-                        println!("ok");
+                        println!(
+                            "\r  probe[{}] mtu={}: {}ok          ",
+                            probe_seq, probe_mtu, from_prefix
+                        );
                         min_mtu = probe_mtu;
                         if min_mtu < max_mtu {
                             probe_mtu = (max_mtu + min_mtu).div_ceil(2);
@@ -99,7 +110,10 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> std::io
                     }
                     Action::TryNextHop(size) => {
                         let size: u16 = size.try_into().map_err(|_| ()).unwrap_or(probe_mtu - 1);
-                        println!("fragmentation needed, next_hop={}", size);
+                        println!(
+                            "\r  probe[{}] mtu={}: {}fragmentation needed, next_hop={}",
+                            probe_seq, probe_mtu, from_prefix, size
+                        );
                         if max_mtu > size {
                             max_mtu = size;
                         } else {
@@ -108,22 +122,31 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> std::io
                         probe_mtu = size;
                     }
                     Action::TryNext => {
-                        println!("fragmentation needed");
+                        println!(
+                            "\r  probe[{}] mtu={}: {}fragmentation needed",
+                            probe_seq, probe_mtu, from_prefix
+                        );
                         max_mtu = probe_mtu - 1;
                         probe_mtu = (max_mtu + min_mtu).div_ceil(2);
                     }
-                    Action::Ignore => {}
+                    Action::Ignore => {
+                        // FIXME: ignored isn't the most descriptive thing to say here
+                        println!(
+                            "\r  probe[{}] mtu={}: {}ignored     ",
+                            probe_seq, probe_mtu, from_prefix
+                        );
+                    }
                 }
             }
             Err(_) => {
-                println!("timed out");
+                println!("\r  probe[{}] mtu={}: timed out   ", probe_seq, probe_mtu);
                 max_mtu = probe_mtu - 1;
                 probe_mtu = (max_mtu + min_mtu).div_ceil(2);
             }
         }
     }
 
-    println!("Path MTU to {}: {} bytes", target, probe_mtu);
+    println!("  path mtu: {}", probe_mtu);
 
     Ok(())
 }

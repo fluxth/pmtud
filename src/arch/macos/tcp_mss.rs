@@ -183,23 +183,43 @@ fn capture_syn_ack(target: IpAddr, port: u16) -> io::Result<SynAckInfo> {
 }
 
 pub(crate) fn tcp_mss_pmtud_v4(target: Ipv4Addr, port: u16) -> io::Result<()> {
-    let info = capture_syn_ack(IpAddr::V4(target), port)?;
-    // Raw SYN-ACK MSS follows RFC 6691: MTU - IP(20) - TCP(20), no TS deduction.
-    let estimated_mtu = info.mss as u32 + 40;
-    println!(
-        "TCP MSS to {}:{}: mss={} timestamps={} estimated_mtu={}",
-        target, port, info.mss, info.has_timestamps, estimated_mtu
-    );
+    print!("  probe: connecting...");
+    std::io::Write::flush(&mut std::io::stdout())?;
+    match capture_syn_ack(IpAddr::V4(target), port) {
+        Ok(info) => {
+            // Raw SYN-ACK MSS follows RFC 6691: MTU - IP(20) - TCP(20), no TS deduction.
+            let estimated_mtu = info.mss as u32 + 40;
+            println!(
+                "\r  probe: from={}, mss={}, timestamps={}",
+                target, info.mss, info.has_timestamps
+            );
+            println!("  estimated path mtu: {}", estimated_mtu);
+        }
+        Err(ref err) if err.kind() == io::ErrorKind::TimedOut => {
+            println!("\r  probe: timed out    ");
+        }
+        Err(err) => return Err(err),
+    }
     Ok(())
 }
 
 pub(crate) fn tcp_mss_pmtud_v6(target: Ipv6Addr, port: u16) -> io::Result<()> {
-    let info = capture_syn_ack(IpAddr::V6(target), port)?;
-    // Raw SYN-ACK MSS follows RFC 6691: MTU - IPv6(40) - TCP(20), no TS deduction.
-    let estimated_mtu = info.mss as u32 + 60;
-    println!(
-        "TCP MSS to [{}]:{}: mss={} timestamps={} estimated_mtu={}",
-        target, port, info.mss, info.has_timestamps, estimated_mtu
-    );
+    print!("  probe: connecting...");
+    std::io::Write::flush(&mut std::io::stdout())?;
+    match capture_syn_ack(IpAddr::V6(target), port) {
+        Ok(info) => {
+            // Raw SYN-ACK MSS follows RFC 6691: MTU - IPv6(40) - TCP(20), no TS deduction.
+            let estimated_mtu = info.mss as u32 + 60;
+            println!(
+                "\r  probe: from={}, mss={}, timestamps={}",
+                target, info.mss, info.has_timestamps
+            );
+            println!("  estimated path mtu: {}", estimated_mtu);
+        }
+        Err(ref err) if err.kind() == io::ErrorKind::TimedOut => {
+            println!("\r  probe: timed out    ");
+        }
+        Err(err) => return Err(err),
+    }
     Ok(())
 }

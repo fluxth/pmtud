@@ -31,12 +31,13 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    if target_addresses.had_warnings {
+        println!();
+    }
+
     if let Some(port) = input.tcp_port {
         if let Some(target) = target_addresses.ipv4 {
-            eprintln!(
-                "IPv4 path MTU discovery using tcp-mss to {}:{}",
-                target, port
-            );
+            println!("tcp-mss {}:{}", target, port);
             if let Err(err) = arch::tcp_mss_pmtud_v4(target, port) {
                 eprintln!("error: {}", err);
                 return ExitCode::FAILURE;
@@ -44,10 +45,10 @@ fn main() -> ExitCode {
         }
 
         if let Some(target) = target_addresses.ipv6 {
-            eprintln!(
-                "IPv6 path MTU discovery using tcp-mss to [{}]:{}",
-                target, port
-            );
+            if target_addresses.ipv4.is_some() {
+                println!();
+            }
+            println!("tcp-mss [{}]:{}", target, port);
             if let Err(err) = arch::tcp_mss_pmtud_v6(target, port) {
                 eprintln!("error: {}", err);
                 return ExitCode::FAILURE;
@@ -55,12 +56,15 @@ fn main() -> ExitCode {
         }
     } else {
         if let Some(target) = target_addresses.ipv4 {
-            eprintln!("IPv4 path MTU discovery using icmp to {}", target);
+            println!("icmp {}", target);
             arch::icmp_pmtud(target)
         }
 
         if let Some(target) = target_addresses.ipv6 {
-            eprintln!("IPv6 path MTU discovery using icmpv6 to {}", target);
+            if target_addresses.ipv4.is_some() {
+                println!();
+            }
+            println!("icmpv6 [{}]", target);
             arch::icmpv6_pmtud(target)
         }
     }
