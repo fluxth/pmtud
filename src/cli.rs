@@ -13,6 +13,10 @@ pub(crate) struct Cli {
     /// Use IPv6 to run path MTU discovery.
     #[arg(short = '6', action = clap::ArgAction::SetTrue)]
     pub use_ipv6: bool,
+
+    /// Use TCP MSS-based MTU discovery. Optional port defaults to 443.
+    #[arg(long = "tcp", num_args = 0..=1, default_missing_value = "443", value_name = "PORT")]
+    pub tcp_port: Option<u16>,
 }
 
 impl Cli {

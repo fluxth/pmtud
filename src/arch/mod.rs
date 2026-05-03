@@ -22,3 +22,27 @@ pub(crate) fn icmp_pmtud(target: Ipv4Addr) {
     #[cfg(not(target_os = "macos"))]
     todo!()
 }
+
+pub(crate) fn tcp_mss_pmtud_v4(target: Ipv4Addr, port: u16) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::tcp_mss::tcp_mss_pmtud_v4(target, port)?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    todo!();
+
+    Ok(())
+}
+
+pub(crate) fn tcp_mss_pmtud_v6(target: Ipv6Addr, port: u16) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::tcp_mss::tcp_mss_pmtud_v6(target, port)?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    todo!();
+
+    Ok(())
+}
