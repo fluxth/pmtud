@@ -134,7 +134,7 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> io::Res
 
     while min_mtu < max_mtu {
         let probe_seq = icmp_seq;
-        print!("  probe[{}] mtu={}: listening...", probe_seq, probe_mtu);
+        print!("  probe[{}] size={}: listening...", probe_seq, probe_mtu);
         std::io::Write::flush(&mut std::io::stdout())?;
 
         let full_packet = pinger.build_echo_request_packet(probe_mtu, probe_seq, target);
@@ -144,7 +144,7 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> io::Res
             Ok(_) => {}
             Err(ref err) if err.raw_os_error() == Some(libc::EMSGSIZE) => {
                 println!(
-                    "\r  probe[{}] mtu={}: from=kernel, message too long",
+                    "\r  probe[{}] size={}: from=kernel, message too long",
                     probe_seq, probe_mtu
                 );
                 max_mtu = probe_mtu - 1;
@@ -153,7 +153,7 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> io::Res
             }
             Err(ref err) if err.raw_os_error() == Some(libc::EHOSTUNREACH) => {
                 println!(
-                    "\r  probe[{}] mtu={}: from=kernel, no route to host",
+                    "\r  probe[{}] size={}: from=kernel, no route to host",
                     probe_seq, probe_mtu
                 );
                 println!("  path mtu: discovery failed");
@@ -182,7 +182,7 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> io::Res
                     match pinger.handle_response_packet(icmp_data, probe_mtu) {
                         Action::ReplyReceived => {
                             println!(
-                                "\r  probe[{}] mtu={}: {}ok          ",
+                                "\r  probe[{}] size={}: {}ok          ",
                                 probe_seq, probe_mtu, from_prefix
                             );
                             min_mtu = probe_mtu;
@@ -196,7 +196,7 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> io::Res
                             let size: u16 =
                                 size.try_into().map_err(|_| ()).unwrap_or(probe_mtu - 1);
                             println!(
-                                "\r  probe[{}] mtu={}: {}fragmentation needed, next_hop={}",
+                                "\r  probe[{}] size={}: {}fragmentation needed, next_hop={}",
                                 probe_seq, probe_mtu, from_prefix, size
                             );
                             if max_mtu > size {
@@ -209,7 +209,7 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> io::Res
                         }
                         Action::TryNext => {
                             println!(
-                                "\r  probe[{}] mtu={}: {}fragmentation needed",
+                                "\r  probe[{}] size={}: {}fragmentation needed",
                                 probe_seq, probe_mtu, from_prefix
                             );
                             max_mtu = probe_mtu - 1;
@@ -219,7 +219,7 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> io::Res
                         Action::Ignore => {
                             if probe_start.elapsed() >= TIMEOUT {
                                 println!(
-                                    "\r  probe[{}] mtu={}: timed out   ",
+                                    "\r  probe[{}] size={}: timed out   ",
                                     probe_seq, probe_mtu
                                 );
                                 max_mtu = probe_mtu - 1;
@@ -231,7 +231,7 @@ fn run_pmtud_by_icmp<T: IcmpPmtud>(pinger: &T, target: T::IpAddrType) -> io::Res
                 }
                 Err(pcap::Error::TimeoutExpired) => {
                     if probe_start.elapsed() >= TIMEOUT {
-                        println!("\r  probe[{}] mtu={}: timed out   ", probe_seq, probe_mtu);
+                        println!("\r  probe[{}] size={}: timed out   ", probe_seq, probe_mtu);
                         max_mtu = probe_mtu - 1;
                         probe_mtu = (max_mtu + min_mtu).div_ceil(2);
                         break 'receive;

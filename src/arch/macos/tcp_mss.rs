@@ -137,7 +137,7 @@ pub(crate) fn tcp_mss_pmtud_v4(target: Ipv4Addr, port: u16) -> io::Result<()> {
             // Raw SYN-ACK MSS follows RFC 6691: MTU - IP(20) - TCP(20), no TS deduction.
             let estimated_mtu = info.mss as u32 + 40;
             println!(
-                "\r  probe: from={}, mss={}, timestamps={}",
+                "\r  probe: peer={}, mss={}, timestamps={}",
                 target, info.mss, info.has_timestamps
             );
             println!("  estimated path mtu: {}", estimated_mtu);
@@ -158,7 +158,7 @@ pub(crate) fn tcp_mss_pmtud_v6(target: Ipv6Addr, port: u16) -> io::Result<()> {
             // Raw SYN-ACK MSS follows RFC 6691: MTU - IPv6(40) - TCP(20), no TS deduction.
             let estimated_mtu = info.mss as u32 + 60;
             println!(
-                "\r  probe: from={}, mss={}, timestamps={}",
+                "\r  probe: peer={}, mss={}, timestamps={}",
                 target, info.mss, info.has_timestamps
             );
             println!("  estimated path mtu: {}", estimated_mtu);
