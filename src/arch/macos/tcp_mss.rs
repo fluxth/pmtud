@@ -2,9 +2,8 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
-use pcap::{Capture, Device, Linktype};
+use pcap::{Capture, Linktype};
 use pnet_packet::Packet;
-use pnet_packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet_packet::ip::IpNextHeaderProtocols;
 use pnet_packet::ipv4::Ipv4Packet;
 use pnet_packet::ipv6::Ipv6Packet;
@@ -16,27 +15,6 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 struct SynAckInfo {
     mss: u16,
     has_timestamps: bool,
-}
-
-fn find_outgoing_device(target: IpAddr, port: u16) -> io::Result<Device> {
-    let domain = match target {
-        IpAddr::V4(_) => Domain::IPV4,
-        IpAddr::V6(_) => Domain::IPV6,
-    };
-    let probe = Socket::new(domain, Type::DGRAM, None)?;
-    let target_addr: SocketAddr = (target, port).into();
-    probe.connect(&target_addr.into())?;
-    let local_ip = probe
-        .local_addr()?
-        .as_socket()
-        .ok_or_else(|| io::Error::other("no local addr"))?
-        .ip();
-
-    Device::list()
-        .map_err(|e| io::Error::other(e.to_string()))?
-        .into_iter()
-        .find(|d| d.addresses.iter().any(|a| a.addr == local_ip))
-        .ok_or_else(|| io::Error::other(format!("no interface with address {}", local_ip)))
 }
 
 fn parse_tcp_options(data: &[u8]) -> Option<SynAckInfo> {
@@ -63,59 +41,28 @@ fn parse_tcp_options(data: &[u8]) -> Option<SynAckInfo> {
 }
 
 fn parse_syn_ack_options(data: &[u8], linktype: Linktype) -> Option<SynAckInfo> {
-    match linktype {
-        Linktype(1) => {
-            let eth = EthernetPacket::new(data)?;
-            match eth.get_ethertype() {
-                EtherTypes::Ipv4 => {
-                    let ip = Ipv4Packet::new(eth.payload())?;
-                    if ip.get_next_level_protocol() != IpNextHeaderProtocols::Tcp {
-                        return None;
-                    }
-                    parse_tcp_options(ip.payload())
-                }
-                EtherTypes::Ipv6 => {
-                    let ip = Ipv6Packet::new(eth.payload())?;
-                    if ip.get_next_header() != IpNextHeaderProtocols::Tcp {
-                        return None;
-                    }
-                    parse_tcp_options(ip.payload())
-                }
-                _ => None,
+    let ip_data = super::ip_data_from_link_frame(data, linktype)?;
+    match ip_data.first().map(|b| b >> 4)? {
+        4 => {
+            let ip = Ipv4Packet::new(ip_data)?;
+            if ip.get_next_level_protocol() != IpNextHeaderProtocols::Tcp {
+                return None;
             }
+            parse_tcp_options(ip.payload())
         }
-        Linktype(0) => {
-            // BSD loopback: 4-byte address family in host byte order, then raw IP.
-            // pnet has no loopback packet type, use the AF value to distinguish.
-            let af = data
-                .get(..4)
-                .and_then(|b| b.try_into().ok())
-                .map(u32::from_ne_bytes)?;
-            let ip_data = data.get(4..)?;
-            match af as libc::c_int {
-                libc::AF_INET => {
-                    let ip = Ipv4Packet::new(ip_data)?;
-                    if ip.get_next_level_protocol() != IpNextHeaderProtocols::Tcp {
-                        return None;
-                    }
-                    parse_tcp_options(ip.payload())
-                }
-                libc::AF_INET6 => {
-                    let ip = Ipv6Packet::new(ip_data)?;
-                    if ip.get_next_header() != IpNextHeaderProtocols::Tcp {
-                        return None;
-                    }
-                    parse_tcp_options(ip.payload())
-                }
-                _ => None,
+        6 => {
+            let ip = Ipv6Packet::new(ip_data)?;
+            if ip.get_next_header() != IpNextHeaderProtocols::Tcp {
+                return None;
             }
+            parse_tcp_options(ip.payload())
         }
         _ => None,
     }
 }
 
 fn capture_syn_ack(target: IpAddr, port: u16) -> io::Result<SynAckInfo> {
-    let device = find_outgoing_device(target, port)?;
+    let device = super::find_outgoing_device(target, port)?;
 
     let domain = match target {
         IpAddr::V4(_) => Domain::IPV4,

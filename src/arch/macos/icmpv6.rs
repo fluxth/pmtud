@@ -1,4 +1,4 @@
-use std::net::Ipv6Addr;
+use std::net::{IpAddr, Ipv6Addr};
 use std::os::unix::io::RawFd;
 
 use pnet_packet::icmpv6::echo_request::MutableEchoRequestPacket;
@@ -100,6 +100,17 @@ impl IcmpPmtud for Icmpv6Pinger {
 
     fn get_min_mtu(&self) -> u16 {
         1280
+    }
+
+    fn get_bpf_filter(&self, target: IpAddr) -> String {
+        format!(
+            "ip6 and ((icmp6[icmp6type] == 129 and src host {}) or icmp6[icmp6type] == 2)",
+            target
+        )
+    }
+
+    fn prepare_icmp_payload<'a>(&self, ip_data: &'a [u8]) -> Option<&'a [u8]> {
+        ip_data.get(40..)
     }
 }
 

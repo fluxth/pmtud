@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::os::unix::io::RawFd;
 
 use pnet_packet::icmp::destination_unreachable::DestinationUnreachablePacket;
@@ -146,6 +146,17 @@ impl IcmpPmtud for Icmpv4Pinger {
 
     fn get_min_mtu(&self) -> u16 {
         576
+    }
+
+    fn get_bpf_filter(&self, target: IpAddr) -> String {
+        format!(
+            "(icmp[icmptype] == 0 and src host {}) or (icmp[icmptype] == 3 and icmp[icmpcode] == 4)",
+            target
+        )
+    }
+
+    fn prepare_icmp_payload<'a>(&self, ip_data: &'a [u8]) -> Option<&'a [u8]> {
+        Some(ip_data)
     }
 }
 
