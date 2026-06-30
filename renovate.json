@@ -5,8 +5,7 @@
     "helpers:pinGitHubActionDigests",
     "customManagers:githubActionsVersions",
     ":maintainLockFilesMonthly",
-    ":pinVersions",
-    "github>Turbo87/renovate-config//rust/updateToolchain"
+    ":pinVersions"
   ],
   "reviewers": ["fluxth"]
 }
